@@ -45,11 +45,13 @@ Creatures execute one action per simulation step:
 - **Check Conditions** - jump in DNA based on energy, light, minerals, or forward cell
 
 ### Evolution
-- Creatures die when energy reaches zero or from rare random death
+- Creatures die when energy reaches zero or from old age (max 255)
 - Dead creatures release minerals to the water
-- New species emerge through mutation (100 attempts per frame)
+- New species emerge through mutation (configurable attempts per frame)
 - Each mutation copies parent DNA with 1-4 random changes and similar color
-- Evolution distance matrix tracks genetic divergence
+- Evolution distance matrix tracks genetic divergence using most recent data
+- Auto-spawns random creatures if population falls below minimum
+- Each creature has an age that increments each step
 
 ### Environment
 - **Light** varies by horizontal position (moving wave), vertical position (brighter at top), and time (seasonal cycles)
@@ -68,6 +70,9 @@ Creature and world state is stored in an RGBA16UI texture (8 bytes per cell):
 | **B** | 0-7 | Last action / opcode |
 | **B** | 8-15 | Minerals (0-255) |
 | **A** | 0-15 | Directed action flags:<br>bit 0: attack flag<br>bits 1-2: attack direction<br>bit 4: move flag<br>bits 5-6: move direction<br>bit 8: reproduce flag<br>bits 9-10: reproduce direction |
+
+**Age Texture** (separate R8UI texture, 1 byte per cell):
+- Creature age (0-255), increments each step, death at 255
 
 Additional data in Shader Storage Buffer Objects (SSBOs):
 - DNA sequences (256 bytes per species)
@@ -95,9 +100,19 @@ Edit `config.json` to change simulation parameters:
   "WorldWidth": 1920,
   "WorldHeight": 1080,
   "MaxSpecies": 20000,
-  "MaxDnaLength": 256
+  "MaxDnaLength": 256,
+  "MutationRate": 100,
+  "MinCreatures": 1000
 }
 ```
+
+| Parameter | Description |
+|-----------|-------------|
+| `WorldWidth/Height` | Simulation world size in cells |
+| `MaxSpecies` | Maximum different species IDs |
+| `MaxDnaLength` | DNA bytes per species |
+| `MutationRate` | How many mutation attempts per frame |
+| `MinCreatures` | Auto-spawn random creatures if population drops below this |
 
 ## 🙏 Acknowledgments
 

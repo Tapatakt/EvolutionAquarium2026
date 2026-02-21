@@ -82,6 +82,12 @@ class GlHelper
         GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, _worldX, _worldY, pixelFormat, pixelType, data);
     }
 
+    public void UploadTexture(int texture, PixelFormat pixelFormat, PixelType pixelType, byte[] data)
+    {
+        GL.BindTexture(TextureTarget.Texture2d, texture);
+        GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, _worldX, _worldY, pixelFormat, pixelType, data);
+    }
+
     public void UploadBuffer(int buffer, int size, byte[] data, int bufferOffset = 0, int dataOffset = 0)
     {
         GL.BindBuffer(BufferTarget.ShaderStorageBuffer, buffer);

@@ -3,6 +3,7 @@
 
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 
 layout(std430, binding = 4) coherent buffer DeathCounterBuffer {
@@ -11,6 +12,7 @@ layout(std430, binding = 4) coherent buffer DeathCounterBuffer {
 
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 const uint OP_ATTACK = 0x4u;
 const uint BASE_EATING_ENERGY = 64u;
@@ -35,6 +37,7 @@ void main()
     {
         outSpecies = 0u;
         outWorldState = worldState;
+        outAge = 0u;
         return;
     }
 
@@ -47,6 +50,9 @@ void main()
     uint directedActions = worldState.a & 0xFFFFu;
 
     uint opcode = lastAction & 0xFu;
+
+    // Чтение возраста
+    uint age = texelFetch(ageTexture, pos, 0).r;
 
     // Если мы атакуем, проверяем успешность
     if (opcode == OP_ATTACK)
@@ -80,6 +86,7 @@ void main()
         atomicAdd(speciesDied[speciesID], 1u);
         speciesID = 0u;
         energy = 0u;
+        age = 0u; // Сбрасываем возраст при смерти
     }
 
     outWorldState.r = dnaPosition | (direction << 8);
@@ -88,4 +95,5 @@ void main()
     outWorldState.a = directedActions;
 
     outSpecies = speciesID;
+    outAge = age;
 }

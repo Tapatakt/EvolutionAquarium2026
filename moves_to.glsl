@@ -3,10 +3,12 @@
 
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 const ivec2 DIRECTIONS[4] = ivec2[4](
     ivec2(0, 1),   // North
@@ -25,8 +27,10 @@ void main()
     // Если клетка занята - ничего не делать
     if (speciesID != 0u)
     {
+        uint age = texelFetch(ageTexture, pos, 0).r;
         outSpecies = speciesID;
         outWorldState = worldState;
+        outAge = age;
         return;
     }
 
@@ -39,6 +43,7 @@ void main()
     {
         outSpecies = 0u;
         outWorldState = worldState;
+        outAge = 0u;
         return;
     }
 
@@ -56,6 +61,7 @@ void main()
     {
         outSpecies = 0u;
         outWorldState = worldState;
+        outAge = 0u;
         return;
     }
 
@@ -67,6 +73,9 @@ void main()
     uint moverEnergy = moverState.g & 0xFFu;
     uint moverParameters = (moverState.g >> 8) & 0xFFu;
 
+    // Получаем возраст от перемещающегося существа
+    uint moverAge = texelFetch(ageTexture, moverPos, 0).r;
+
     // Сохраняем минералы текущей клетки
     uint minerals = (worldState.b >> 8) & 0xFFu;
 
@@ -76,4 +85,5 @@ void main()
     outWorldState.a = directedActions;
 
     outSpecies = moverSpecies;
+    outAge = moverAge;
 }

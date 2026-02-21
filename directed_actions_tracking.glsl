@@ -4,6 +4,7 @@
 // Входные текстуры
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 
 // SSBO
@@ -11,9 +12,10 @@ layout(std430, binding = 0) buffer DNABuffer {
     uint dna[];
 };
 
-// Выходные данные (две текстуры)
+// Выходные данные (три текстуры)
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 // Константы
 const uint OP_MOVE = 0x3u;
@@ -36,6 +38,9 @@ void main()
     // Чтение текущего состояния
     uint speciesID = texelFetch(speciesTexture, pos, 0).r;
     uvec4 worldState = texelFetch(worldStateTexture, pos, 0);
+
+    // Чтение возраста (существо не меняется)
+    uint age = texelFetch(ageTexture, pos, 0).r;
 
     // Распаковка состояния
     uint dnaPosition = worldState.r & 0xFFu;
@@ -219,4 +224,5 @@ void main()
     outWorldState.a = directedActions; // Bytes 6-7
 
     outSpecies = speciesID;
+    outAge = age;
 }

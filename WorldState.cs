@@ -1,13 +1,10 @@
 namespace EvolutionAquarium2026;
+
 class WorldState
 {
     readonly Random _rnd = new();
-
-    readonly int _worldX;
-    readonly int _worldY;
-    readonly int _maxSpecies;
-    readonly int _maxDnaLen;
-
+    readonly Config _config;
+    int _unusedSpecies = 1;
     public Flattened2dArray<byte> Dna { get; private set; }
     public uint[] Colors { get; private set; }
     public Flattened2dArray<byte> EvolutionDistance { get; private set; }
@@ -16,29 +13,28 @@ class WorldState
     public uint[] SpeciesBorn { get; private set; }
     public uint[] SpeciesDied { get; private set; }
     public uint[] SpeciesCreated { get; private set; }
+    public Flattened2dArray<byte> Ages { get; private set; }
     public List<int> MutatedSpecies { get; } = [];
 
-    public WorldState(int worldX, int worldY, int maxSpecies, int maxDnaLen)
+    public WorldState(Config config)
     {
-        _worldX = worldX;
-        _worldY = worldY;
-        _maxSpecies = maxSpecies;
-        _maxDnaLen = maxDnaLen;
-        SpeciesMap = new(_worldX, _worldY);
-        SpeciesPopulation = new uint[_maxSpecies];
-        SpeciesBorn = new uint[_maxSpecies];
-        SpeciesDied = new uint[_maxSpecies];
-        SpeciesCreated = new uint[_maxSpecies];
-        Dna = new(_maxDnaLen, _maxSpecies);
-        Colors = new uint[_maxSpecies];
-        EvolutionDistance = new(_maxSpecies, _maxSpecies);
+        _config = config;
+        SpeciesMap = new(_config.WorldWidth, _config.WorldHeight);
+        SpeciesPopulation = new uint[_config.MaxSpecies];
+        SpeciesBorn = new uint[_config.MaxSpecies];
+        SpeciesDied = new uint[_config.MaxSpecies];
+        SpeciesCreated = new uint[_config.MaxSpecies];
+        Ages = new(_config.WorldWidth, _config.WorldHeight);
+        Dna = new(_config.MaxDnaLength, _config.MaxSpecies);
+        Colors = new uint[_config.MaxSpecies];
+        EvolutionDistance = new(_config.MaxSpecies, _config.MaxSpecies);
     }
 
     public ushort[] Initialize()
     {
 
         InitializeDNA();
-        CreateCreatures();
+        //CreateCreatures();
         RandomizeColors();
         InitializeEvolutionDistance();
         return InitializeCellStates();
@@ -46,14 +42,14 @@ class WorldState
 
     private void InitializeEvolutionDistance()
     {
-        for (int i = 0; i < _maxSpecies; i++)
-            for (int j = 0; j < _maxSpecies; j++)
+        for (int i = 0; i < _config.MaxSpecies; i++)
+            for (int j = 0; j < _config.MaxSpecies; j++)
                 EvolutionDistance[j, i] = (byte)(i == j ? 0 : 255);
     }
 
     private void RandomizeColors()
     {
-        for (int i = 0; i < _maxSpecies; i++)
+        for (int i = 0; i < _config.MaxSpecies; i++)
         {
             byte r = (byte)_rnd.Next(256);
             byte g = (byte)_rnd.Next(256);
@@ -64,39 +60,39 @@ class WorldState
 
     private void CreateCreatures()
     {
-        for (int k = 0; k < 1; k++)
-            for (int i = 0; i < _maxSpecies; i++)
+        for (int i = 0; i < _config.MaxSpecies; i++)
+        {
+            int x = _rnd.Next(0, _config.WorldWidth);
+            int y = _rnd.Next(0, _config.WorldHeight);
+            while (SpeciesMap[x, y] != 0)
             {
-                int x = _rnd.Next(0, _worldX);
-                int y = _rnd.Next(0, _worldY);
-                while (SpeciesMap[x, y] != 0)
-                {
-                    x = _rnd.Next(0, _worldX);
-                    y = _rnd.Next(0, _worldY);
-                }
-                SpeciesMap[x, y] = (uint)i;
-                SpeciesPopulation[i]++;
+                x = _rnd.Next(0, _config.WorldWidth);
+                y = _rnd.Next(0, _config.WorldHeight);
             }
+            SpeciesMap[x, y] = (uint)i;
+            SpeciesPopulation[i]++;
+        }
+        _unusedSpecies = -1;
     }
 
     private ushort[] InitializeCellStates()
     {
-        
-        ushort[] worldState = new ushort[_worldX * _worldY * 4];
-        for (int x = 0; x < _worldX; x++)
-            for (int y = 0; y < _worldY; y++)
+
+        ushort[] worldState = new ushort[_config.WorldWidth * _config.WorldHeight * 4];
+        for (int x = 0; x < _config.WorldWidth; x++)
+            for (int y = 0; y < _config.WorldHeight; y++)
             {
                 ushort[] cellData = PackCellState(0, (byte)_rnd.Next(0, 4), 255, 0, 0, 0, 0, 0, 255);
                 for (int i = 0; i < 4; i++)
-                    worldState[y * _worldX * 4 + x * 4 + i] = cellData[i];
+                    worldState[y * _config.WorldWidth * 4 + x * 4 + i] = cellData[i];
             }
         return worldState;
     }
 
     private void InitializeDNA()
     {
-        for (int species = 1; species < _maxSpecies; species++)
-            for (int pos = 0; pos < _maxDnaLen; pos++)
+        for (int species = 1; species < _config.MaxSpecies; species++)
+            for (int pos = 0; pos < _config.MaxDnaLength; pos++)
                 Dna[pos, species] = (byte)_rnd.Next(0, 256);
     }
 
@@ -126,64 +122,120 @@ class WorldState
             0
         ];
     }
-
+    private void FindNextUnusedSpecies()
+    {
+        int speciesID = _unusedSpecies;
+        for (int i = 0; i < _config.MaxSpecies - 1; i++)
+        {
+            speciesID = (speciesID + 1) % _config.MaxSpecies;
+            if (speciesID == 0) speciesID++;
+            if (SpeciesPopulation[speciesID] == 0)
+            {
+                _unusedSpecies = speciesID;
+                return;
+            }
+        }
+        _unusedSpecies = -1;
+    }
     public void Mutations(uint stepNumber)
     {
-        int newSpecies = 0;
-        int FindUnusedSpeciesId()
+        for (int m = 0; m < _config.MutationRate; m++)
         {
-            for (int i = newSpecies + 1; i < _maxSpecies; i++)
-                if (SpeciesPopulation[i] == 0)
-                    return i;
-            return 0;
-        }
-
-        for (int m = 0; m < 100; m++)
-        {
-            int x = _rnd.Next(0, _worldX);
-            int y = _rnd.Next(0, _worldY);
+            if (_unusedSpecies == -1) return;
+            int x = _rnd.Next(0, _config.WorldWidth);
+            int y = _rnd.Next(0, _config.WorldHeight);
             if (SpeciesMap[x, y] == 0) continue;
-            newSpecies = FindUnusedSpeciesId();
-            if (newSpecies == 0) return;
             int oldSpecies = (int)SpeciesMap[x, y];
-            SpeciesMap[x, y] = (uint)newSpecies;
+            SpeciesMap[x, y] = (uint)_unusedSpecies;
             SpeciesPopulation[oldSpecies]--;
-            SpeciesPopulation[newSpecies]++;
-            for (int i = 0; i < _maxDnaLen; i++)
-                Dna[i, newSpecies] = Dna[i, oldSpecies];
+            SpeciesPopulation[_unusedSpecies]++;
+            for (int i = 0; i < _config.MaxDnaLength; i++)
+                Dna[i, _unusedSpecies] = Dna[i, oldSpecies];
 
             int mutations = _rnd.Next(1, 5);
             for (int i = 0; i < mutations; i++)
-                Dna[_rnd.Next(_maxDnaLen), newSpecies] = (byte)_rnd.Next(0, 256);
+                Dna[_rnd.Next(_config.MaxDnaLength), _unusedSpecies] = (byte)_rnd.Next(0, 256);
 
             byte r = (byte)Math.Clamp((Colors[oldSpecies] & 0xFF) + _rnd.Next(0, 31) - 15, 0, 255);
             byte g = (byte)Math.Clamp(((Colors[oldSpecies] >> 8) & 0xFF) + _rnd.Next(0, 31) - 15, 0, 255);
             byte b = (byte)Math.Clamp(((Colors[oldSpecies] >> 16) & 0xFF) + _rnd.Next(0, 31) - 15, 0, 255);
-            Colors[newSpecies] = (uint)(r | (g << 8) | (b << 16));
-            SpeciesCreated[newSpecies] = stepNumber;
+            Colors[_unusedSpecies] = (uint)(r | (g << 8) | (b << 16));
+            SpeciesCreated[_unusedSpecies] = stepNumber;
 
-            for (int i = 0; i < _maxSpecies; i++)
+            for (int i = 0; i < _config.MaxSpecies; i++)
             {
                 if (EvolutionDistance[oldSpecies, i] == 255)
-                    EvolutionDistance[newSpecies, i] = 255;
-                else EvolutionDistance[newSpecies, i] = (byte)(EvolutionDistance[oldSpecies, i] + 1);
-                if (i == newSpecies) EvolutionDistance[newSpecies, i] = 0;
-                if (i == oldSpecies) EvolutionDistance[newSpecies, i] = 1;
-                EvolutionDistance[i, newSpecies] = EvolutionDistance[newSpecies, i];
+                    EvolutionDistance[_unusedSpecies, i] = 255;
+                else EvolutionDistance[_unusedSpecies, i] = (byte)(EvolutionDistance[oldSpecies, i] + 1);
+                if (i == _unusedSpecies) EvolutionDistance[_unusedSpecies, i] = 0;
+                if (i == oldSpecies) EvolutionDistance[_unusedSpecies, i] = 1;
+                EvolutionDistance[i, _unusedSpecies] = EvolutionDistance[_unusedSpecies, i];
             }
 
-            MutatedSpecies.Add(newSpecies);
+            MutatedSpecies.Add(_unusedSpecies);
+            FindNextUnusedSpecies();
         }
     }
 
-    public void UpdatePopulations()
+    public void UpdatePopulations(uint stepNumber)
     {
-        for (int i = 1; i < _maxSpecies; i++)
+        for (int i = 1; i < _config.MaxSpecies; i++)
         {
             SpeciesPopulation[i] += SpeciesBorn[i];
             SpeciesPopulation[i] -= SpeciesDied[i];
+            if (SpeciesPopulation[i] == 0 && _unusedSpecies == -1)
+                _unusedSpecies = i;
             SpeciesBorn[i] = 0;
             SpeciesDied[i] = 0;
+        }
+
+        EnsureMinCreatures(stepNumber);
+    }
+
+    void EnsureMinCreatures(uint stepNumber)
+    {
+        uint totalPopulation = 0;
+        for (int i = 1; i < _config.MaxSpecies; i++)
+            totalPopulation += SpeciesPopulation[i];
+
+        while (totalPopulation < _config.MinCreatures)
+        {
+            if (_unusedSpecies == -1) return;
+            // Find empty cell
+            int x = _rnd.Next(0, _config.WorldWidth);
+            int y = _rnd.Next(0, _config.WorldHeight);
+            if (SpeciesMap[x, y] != 0) continue;
+            
+            int newSpecies = _unusedSpecies;
+            
+            // Create creature with random DNA
+            SpeciesMap[x, y] = (uint)newSpecies;
+            SpeciesPopulation[newSpecies] = 1;
+            SpeciesCreated[newSpecies] = stepNumber;
+            
+            for (int pos = 0; pos < _config.MaxDnaLength; pos++)
+                Dna[pos, newSpecies] = (byte)_rnd.Next(0, 256);
+
+            // Random color
+            byte r = (byte)_rnd.Next(256);
+            byte g = (byte)_rnd.Next(256);
+            byte b = (byte)_rnd.Next(256);
+            Colors[newSpecies] = (uint)(r | (g << 8) | (b << 16));
+
+            // Init evolutionDistance: unrelated to all others (255), 0 to self
+            for (int i = 0; i < _config.MaxSpecies; i++)
+            {
+                EvolutionDistance[newSpecies, i] = 255;
+                EvolutionDistance[i, newSpecies] = 255;
+            }
+            EvolutionDistance[newSpecies, newSpecies] = 0;
+
+            // Mark as mutated so DNA/color/evolutionDistance gets uploaded
+            if (!MutatedSpecies.Contains(newSpecies))
+                MutatedSpecies.Add(newSpecies);
+
+            totalPopulation++;
+            FindNextUnusedSpecies();
         }
     }
 }

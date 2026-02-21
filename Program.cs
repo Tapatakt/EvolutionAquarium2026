@@ -21,7 +21,7 @@ internal class Program(GameWindowSettings gameWindowSettings, NativeWindowSettin
         VSync = VSyncMode.On; // Ограничить до частоты монитора (обычно 60 FPS)
         var resolution = Monitors.GetPrimaryMonitor().CurrentVideoMode;
         Config config = Config.Load();
-        _simulation = new(config.WorldWidth, config.WorldHeight, resolution.Width, resolution.Height, config.MaxSpecies, config.MaxDnaLength);
+        _simulation = new(config, resolution.Width, resolution.Height);
     }
     protected override void OnRenderFrame(FrameEventArgs args)
     {

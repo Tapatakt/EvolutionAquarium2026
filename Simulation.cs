@@ -15,13 +15,10 @@ class Simulation
 
     readonly Random _rnd = new();
     readonly GlHelper _glHelper;
+    readonly Config _config;
 
-    readonly int _worldX;
-    readonly int _worldY;
     readonly int _screenX;
     readonly int _screenY;
-    readonly int _maxSpecies;
-    readonly int _maxDnaLen;
 
     int _vertexShader;
     int _thinkingProgram;
@@ -44,6 +41,7 @@ class Simulation
 
     int[] _speciesTextures = new int[2];
     int[] _worldStateTextures = new int[2];
+    int[] _ageTextures = new int[2];
     int _currentBuffer = 0;
     int _dnaBuffer;
     int _colorsBuffer;
@@ -62,17 +60,14 @@ class Simulation
     uint _visualizationMode = 1;
 
     public object BuffersLock { get; } = new();
-    public Simulation(int worldX, int worldY, int screenX, int screenY, int maxSpecies, int maxDnaLen)
+    public Simulation(Config config, int screenX, int screenY)
     {
-        _worldX = worldX;
-        _worldY = worldY;
+        _config = config;
         _screenX = screenX;
         _screenY = screenY;
-        _maxSpecies = maxSpecies;
-        _maxDnaLen = maxDnaLen;
-        _worldState = new(_worldX, _worldY, _maxSpecies, _maxDnaLen);
-        _zeroCounters = new uint[_maxSpecies];
-        _glHelper = new(_worldX, _worldY);
+        _worldState = new(_config);
+        _zeroCounters = new uint[_config.MaxSpecies];
+        _glHelper = new(_config.WorldWidth, _config.WorldHeight);
 
         CompileAllShaders();
         CreateBuffersAndTextures();
@@ -119,12 +114,18 @@ class Simulation
                 PixelFormat.RgbaInteger,
                 PixelType.UnsignedShort);
 
-        _dnaBuffer = _glHelper.CreateSSBO(_maxSpecies * _maxDnaLen, BufferUsage.StaticDraw);
-        _colorsBuffer = _glHelper.CreateSSBO(_maxSpecies * sizeof(uint), BufferUsage.StaticDraw);
-        _relatednessBuffer = _glHelper.CreateSSBO(_maxSpecies * _maxSpecies, BufferUsage.StaticDraw);
-        _birthCounterBuffer = _glHelper.CreateSSBO(_maxSpecies * sizeof(uint), BufferUsage.DynamicRead);
-        _deathCounterBuffer = _glHelper.CreateSSBO(_maxSpecies * sizeof(uint), BufferUsage.DynamicRead);
-        _createdBuffer = _glHelper.CreateSSBO(_maxSpecies * sizeof(uint), BufferUsage.StaticDraw);
+        for (int i = 0; i < 2; i++)
+            _ageTextures[i] = _glHelper.CreateTexture(
+                InternalFormat.R8ui,
+                PixelFormat.RedInteger,
+                PixelType.UnsignedByte);
+
+        _dnaBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * _config.MaxDnaLength, BufferUsage.StaticDraw);
+        _colorsBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * sizeof(uint), BufferUsage.StaticDraw);
+        _relatednessBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * _config.MaxSpecies, BufferUsage.StaticDraw);
+        _birthCounterBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * sizeof(uint), BufferUsage.DynamicRead);
+        _deathCounterBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * sizeof(uint), BufferUsage.DynamicRead);
+        _createdBuffer = _glHelper.CreateSSBO(_config.MaxSpecies * sizeof(uint), BufferUsage.StaticDraw);
 
         _renderTexture = _glHelper.CreateTexture(
             InternalFormat.Rgba8,
@@ -173,13 +174,14 @@ class Simulation
         // Upload to buffer [0] only - first simulation step will write to [1]
         _glHelper.UploadTexture(_speciesTextures[0], PixelFormat.RedInteger, PixelType.UnsignedInt, _worldState.SpeciesMap.Data);
         _glHelper.UploadTexture(_worldStateTextures[0], PixelFormat.RgbaInteger, PixelType.UnsignedShort, initialWorldState);
+        _glHelper.UploadTexture(_ageTextures[0], PixelFormat.RedInteger, PixelType.UnsignedByte, _worldState.Ages.Data);
 
-        _glHelper.UploadBuffer(_dnaBuffer, _maxSpecies * _maxDnaLen, _worldState.Dna.Data);
-        _glHelper.UploadBuffer(_colorsBuffer, _maxSpecies * sizeof(uint), _worldState.Colors);
-        _glHelper.UploadBuffer(_relatednessBuffer, _maxSpecies * _maxSpecies, _worldState.EvolutionDistance.Data);
-        _glHelper.UploadBuffer(_birthCounterBuffer, _maxSpecies * sizeof(uint), _worldState.SpeciesBorn);
-        _glHelper.UploadBuffer(_deathCounterBuffer, _maxSpecies * sizeof(uint), _worldState.SpeciesDied);
-        _glHelper.UploadBuffer(_createdBuffer, _maxSpecies * sizeof(uint), _worldState.SpeciesCreated);
+        _glHelper.UploadBuffer(_dnaBuffer, _config.MaxSpecies * _config.MaxDnaLength, _worldState.Dna.Data);
+        _glHelper.UploadBuffer(_colorsBuffer, _config.MaxSpecies * sizeof(uint), _worldState.Colors);
+        _glHelper.UploadBuffer(_relatednessBuffer, _config.MaxSpecies * _config.MaxSpecies, _worldState.EvolutionDistance.Data);
+        _glHelper.UploadBuffer(_birthCounterBuffer, _config.MaxSpecies * sizeof(uint), _worldState.SpeciesBorn);
+        _glHelper.UploadBuffer(_deathCounterBuffer, _config.MaxSpecies * sizeof(uint), _worldState.SpeciesDied);
+        _glHelper.UploadBuffer(_createdBuffer, _config.MaxSpecies * sizeof(uint), _worldState.SpeciesCreated);
     }
 
     public void Step()
@@ -208,7 +210,7 @@ class Simulation
             ReadbackFromGPU();
         }
         // Шаг 4: Подсчет популяций и мутации
-        _worldState.UpdatePopulations();
+        _worldState.UpdatePopulations((uint)_stepNumber);
         _worldState.Mutations((uint)_stepNumber);
 
         // Шаг 5: Визуализация
@@ -225,12 +227,12 @@ class Simulation
         // Upload DNA, Colors and EvolutionDistance for mutated species
         foreach (int species in _worldState.MutatedSpecies)
         {
-            int dnaOffset = species * _maxDnaLen;
-            _glHelper.UploadBuffer(_dnaBuffer, _maxDnaLen, _worldState.Dna.Data, bufferOffset: dnaOffset, dataOffset: dnaOffset);
+            int dnaOffset = species * _config.MaxDnaLength;
+            _glHelper.UploadBuffer(_dnaBuffer, _config.MaxDnaLength, _worldState.Dna.Data, bufferOffset: dnaOffset, dataOffset: dnaOffset);
             _glHelper.UploadBuffer(_colorsBuffer, sizeof(uint), _worldState.Colors, bufferOffset: species * sizeof(uint), dataOffset: species);
             
-            int evoOffset = species * _maxSpecies;
-            _glHelper.UploadBuffer(_relatednessBuffer, _maxSpecies, _worldState.EvolutionDistance.Data, bufferOffset: evoOffset, dataOffset: evoOffset);
+            int evoOffset = species * _config.MaxSpecies;
+            _glHelper.UploadBuffer(_relatednessBuffer, _config.MaxSpecies, _worldState.EvolutionDistance.Data, bufferOffset: evoOffset, dataOffset: evoOffset);
         }
         _worldState.MutatedSpecies.Clear();
 
@@ -246,10 +248,10 @@ class Simulation
             PixelFormat.RedInteger, PixelType.UnsignedInt, _worldState.SpeciesMap.Data);
 
         GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _birthCounterBuffer);
-        GL.GetBufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _maxSpecies * sizeof(uint), _worldState.SpeciesBorn);
+        GL.GetBufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _config.MaxSpecies * sizeof(uint), _worldState.SpeciesBorn);
 
         GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _deathCounterBuffer);
-        GL.GetBufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _maxSpecies * sizeof(uint), _worldState.SpeciesDied);
+        GL.GetBufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _config.MaxSpecies * sizeof(uint), _worldState.SpeciesDied);
 
         ResetGPUCounters();
     }
@@ -257,9 +259,9 @@ class Simulation
     void ResetGPUCounters()
     {
         GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _birthCounterBuffer);
-        GL.BufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _maxSpecies * sizeof(uint), _zeroCounters);
+        GL.BufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _config.MaxSpecies * sizeof(uint), _zeroCounters);
         GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _deathCounterBuffer);
-        GL.BufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _maxSpecies * sizeof(uint), _zeroCounters);
+        GL.BufferSubData(BufferTarget.ShaderStorageBuffer, IntPtr.Zero, _config.MaxSpecies * sizeof(uint), _zeroCounters);
     }
 
 
@@ -280,12 +282,17 @@ class Simulation
             FramebufferAttachment.ColorAttachment1,
             TextureTarget.Texture2d, _worldStateTextures[writeBuffer], 0);
 
-        GL.DrawBuffers(2, [
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer,
+            FramebufferAttachment.ColorAttachment2,
+            TextureTarget.Texture2d, _ageTextures[writeBuffer], 0);
+
+        GL.DrawBuffers(3, [
             DrawBufferMode.ColorAttachment0,
-        DrawBufferMode.ColorAttachment1
+            DrawBufferMode.ColorAttachment1,
+            DrawBufferMode.ColorAttachment2
         ]);
 
-        GL.Viewport(0, 0, _worldX, _worldY);
+        GL.Viewport(0, 0, _config.WorldWidth, _config.WorldHeight);
 
         GL.UseProgram(program);
         BindResources(program, readBuffer);  // Pass which buffer to read from
@@ -302,7 +309,7 @@ class Simulation
     void RunShaderToRenderTexture(int program)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, _renderFramebuffer);
-        GL.Viewport(0, 0, _worldX, _worldY);
+        GL.Viewport(0, 0, _config.WorldWidth, _config.WorldHeight);
 
         GL.UseProgram(program);
         BindResources(program, _currentBuffer);
@@ -329,7 +336,7 @@ class Simulation
         GL.Uniform2f(GL.GetUniformLocation(_displayProgram, "cameraPos"), _cameraX, _cameraY);
         GL.Uniform1f(GL.GetUniformLocation(_displayProgram, "cameraZoom"), _cameraZoom);
         GL.Uniform2f(GL.GetUniformLocation(_displayProgram, "screenSize"), _screenX, _screenY);
-        GL.Uniform2f(GL.GetUniformLocation(_displayProgram, "worldSize"), _worldX, _worldY);
+        GL.Uniform2f(GL.GetUniformLocation(_displayProgram, "worldSize"), _config.WorldWidth, _config.WorldHeight);
 
         GL.BindVertexArray(_quadVao);
         GL.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
@@ -339,8 +346,9 @@ class Simulation
     {
         _glHelper.BindTexture(program, TextureUnit.Texture0, _speciesTextures[readBuffer], "speciesTexture");
         _glHelper.BindTexture(program, TextureUnit.Texture1, _worldStateTextures[readBuffer], "worldStateTexture");
+        _glHelper.BindTexture(program, TextureUnit.Texture2, _ageTextures[readBuffer], "ageTexture");
 
-        _glHelper.BindUniform(program, "worldSize", (float)_worldX, (float)_worldY);
+        _glHelper.BindUniform(program, "worldSize", (float)_config.WorldWidth, (float)_config.WorldHeight);
         _glHelper.BindUniform(program, "stepNumber", (uint)_stepNumber);
         _glHelper.BindUniform(program, "visualizationMode", _visualizationMode);
 

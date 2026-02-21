@@ -3,6 +3,7 @@
 // Входные текстуры
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 uniform uint stepNumber;
 
@@ -27,9 +28,10 @@ layout(std430, binding = 4) coherent buffer DeathCounterBuffer {
     uint speciesDied[];
 };
 
-// Выходные данные (две текстуры)
+// Выходные данные (три текстуры)
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 // Константы
 const float PI = 3.14159265359;
@@ -71,12 +73,14 @@ void main()
     // Чтение текущего состояния
     uint speciesID = texelFetch(speciesTexture, pos, 0).r;
     uvec4 worldState = texelFetch(worldStateTexture, pos, 0);
+    uint age = texelFetch(ageTexture, pos, 0).r;
 
     // Если пустая клетка - ничего не делать
     if (speciesID == 0u)
     {
         outSpecies = 0u;
         outWorldState = worldState;
+        outAge = 0u;
         return;
     }
 
@@ -137,17 +141,16 @@ void main()
     if (energy > 0u) // && stepNumber % 2 == 0)
         energy -= 1u;
 
-    // псевдослучайная смерть
-    bool randomDeath = false;
-    if (int(pos.x * worldSize.y + pos.y + 1777 * stepNumber) % 3571 == 0)
-        randomDeath = true;
+    // Увеличение возраста
+    age += 1u;
 
-    // Смерть от голода
-    if (energy == 0u || randomDeath)
+    // Смерть от голода или старости (макс 255)
+    if (energy == 0u || age >= 255u)
     {
         atomicAdd(speciesDied[speciesID], 1u);
         speciesID = 0u;
         minerals = min(minerals + MINERALS_ON_DEATH, 255u);
+        age = 0u;
     }
 
     // Упаковка обратно в worldState
@@ -157,4 +160,5 @@ void main()
     outWorldState.a = worldState.a;
 
     outSpecies = speciesID;
+    outAge = age;
 }

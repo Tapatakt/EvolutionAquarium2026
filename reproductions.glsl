@@ -3,6 +3,7 @@
 
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 
 layout(std430, binding = 3) coherent buffer BirthCounterBuffer {
@@ -11,6 +12,7 @@ layout(std430, binding = 3) coherent buffer BirthCounterBuffer {
 
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 const uint OP_REPRODUCE = 0x9u;
 const uint REPRODUCTION_COST = 196u;
@@ -39,6 +41,9 @@ void main()
     uint directedActions = worldState.a & 0xFFFFu;
 
     uint opcode = lastAction & 0xFu;
+
+    // Чтение возраста (для существующего существа)
+    uint age = texelFetch(ageTexture, pos, 0).r;
 
     // Если есть существо и оно размножается
     if (speciesID != 0u && opcode == OP_REPRODUCE)
@@ -97,6 +102,7 @@ void main()
                 parameters = 0u; // Без органов
                 lastAction = 0u;
                 // minerals остаются как были
+                age = 0u; // Потомок только что родился, возраст = 0
             }
         }
     }
@@ -107,4 +113,5 @@ void main()
     outWorldState.a = directedActions;
 
     outSpecies = speciesID;
+    outAge = age;
 }

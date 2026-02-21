@@ -3,10 +3,12 @@
 
 uniform usampler2D speciesTexture;
 uniform usampler2D worldStateTexture;
+uniform usampler2D ageTexture;
 uniform vec2 worldSize;
 
 layout(location = 0) out uint outSpecies;
 layout(location = 1) out uvec4 outWorldState;
+layout(location = 2) out uint outAge;
 
 const uint OP_MOVE = 0x3u;
 
@@ -29,6 +31,7 @@ void main()
     {
         outSpecies = 0u;
         outWorldState = worldState;
+        outAge = 0u;
         return;
     }
 
@@ -39,8 +42,10 @@ void main()
     // Если последнее действие не move - ничего не делать
     if (opcode != OP_MOVE)
     {
+        uint age = texelFetch(ageTexture, pos, 0).r;
         outSpecies = speciesID;
         outWorldState = worldState;
+        outAge = age;
         return;
     }
 
@@ -51,8 +56,10 @@ void main()
     // Проверяем, не пол/потолок ли впереди
     if (forwardPos.y == -1 || forwardPos.y == int(worldSize.y))
     {
+        uint age = texelFetch(ageTexture, pos, 0).r;
         outSpecies = speciesID;
         outWorldState = worldState;
+        outAge = age;
         return;
     }
 
@@ -64,8 +71,10 @@ void main()
 
     if (!isMarkedAsMover)
     {
+        uint age = texelFetch(ageTexture, pos, 0).r;
         outSpecies = speciesID;
         outWorldState = worldState;
+        outAge = age;
         return;
     }
 
@@ -77,8 +86,10 @@ void main()
     if (expectedSourcePos != pos)
     {
         // Флаг установлен другим существом, мы проиграли гонку за эту клетку
+        uint age = texelFetch(ageTexture, pos, 0).r;
         outSpecies = speciesID;
         outWorldState = worldState;
+        outAge = age;
         return;
     }
 
@@ -91,4 +102,5 @@ void main()
     outWorldState.a = 0u;
 
     outSpecies = 0u;
+    outAge = 0u; // Сбрасываем возраст при уходе
 }
