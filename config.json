@@ -1,0 +1,6 @@
+{
+  "WorldWidth": 1920,
+  "WorldHeight": 1080,
+  "MaxSpecies": 20000,
+  "MaxDnaLength": 256
+}
