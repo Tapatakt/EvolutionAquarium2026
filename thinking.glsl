@@ -197,10 +197,8 @@ void main()
             bool checkPassed = false;
 
             if (param56 == 0u)
-            {
-                checkPassed = forwardSpecies == 0u;
-            }
-            else
+                checkPassed = (forwardSpecies == 0u);
+            else if (forwardSpecies > 0u)
             {
                 // Use row of more recently created species for up-to-date distance
                 uint speciesACreated = speciesCreated[speciesID];
@@ -213,24 +211,12 @@ void main()
                 int distByteOffset = distByteIndex % 4;
                 uint distWord = evolutionDistance[distWordIndex];
                 uint distance = (distWord >> (distByteOffset * 8u)) & 0xFFu;
-                if (param56 == 1u)
-                {
-                    // Тот же или почти тот же вид
-                    checkPassed = (distance <= 2u);
-                }
-                else if (param56 == 2u)
-                {
-                    // Довольно близкий родственник
-                    if (forwardSpecies > 0u && forwardSpecies != speciesID)
-                    {
-                        checkPassed = (distance <= 5u);
-                    }
-                }
+                if (param56 == 1u) // Тот же вид
+                    checkPassed = (distance == 0u);
+                else if (param56 == 2u) // Близкий родственник
+                    checkPassed = (distance > 0u && distance <= 2u);
                 else if (param56 == 3u)
-                {
-                    // Не близкий родственник
-                    checkPassed = (distance >= 6u);
-                }
+                    checkPassed = (distance >= 3u); // Не близкий родственник
             }
 
             if (checkPassed)
